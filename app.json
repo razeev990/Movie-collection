@@ -2,6 +2,7 @@
   "expo": {
     "name": "Movie Collection",
     "slug": "movie-collection",
+    "owner": "razeev99091",
     "version": "1.0.0",
     "orientation": "portrait",
     "splash": {
@@ -13,6 +14,11 @@
       "permissions": ["INTERNET"],
       "splash": {
         "backgroundColor": "#121212"
+      }
+    },
+    "extra": {
+      "eas": {
+        "projectId": "2a51595b-62f2-47b6-b522-33a3012707bf"
       }
     }
   }
