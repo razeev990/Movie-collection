@@ -4,7 +4,7 @@
     "slug": "movie-collection",
     "version": "1.0.0",
     "orientation": "portrait",
-    "icon": "https://i.postimg.cc/LXcdGxVw/cinema-concept-1284-12713.jpg",
+    "icon": "https://raw.githubusercontent.com/expo/expo/main/templates/expo-template-blank/assets/icon.png",
     "userInterfaceStyle": "dark",
     "splash": {
       "resizeMode": "contain",
@@ -13,7 +13,7 @@
     "android": {
       "package": "com.moviecollection.app",
       "adaptiveIcon": {
-        "foregroundImage": "https://i.postimg.cc/LXcdGxVw/cinema-concept-1284-12713.jpg",
+        "foregroundImage": "https://raw.githubusercontent.com/expo/expo/main/templates/expo-template-blank/assets/adaptive-icon.png",
         "backgroundColor": "#121212"
       }
     },
