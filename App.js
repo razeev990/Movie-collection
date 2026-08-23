@@ -57,6 +57,7 @@ export default function App() {
   const [page, setPage] = useState(1);
   const [totalPages, setTotalPages] = useState(1);
   const [tab, setTab] = useState('popular');
+  const [savedSubTab, setSavedSubTab] = useState('watchlist'); // 'watchlist' | 'watched'
   const [selectedGenre, setSelectedGenre] = useState('all');
   const [searchQuery, setSearchQuery] = useState('');
   const [savedItems, setSavedItems] = useState([]);
@@ -307,7 +308,8 @@ export default function App() {
     setProfileModalVisible(false);
   };
 
-  const toggleSaveItem = async (item) => {
+  // Toggle Item to 'watchlist' or 'watched'
+  const toggleSaveItem = async (item, targetStatus = 'watchlist') => {
     if (!currentUser) {
       setAuthMode('login');
       setAuthStatusMessage('Please login to save movies to Cloud.');
@@ -316,13 +318,19 @@ export default function App() {
     }
 
     try {
-      const exists = savedItems.some((m) => m.id === item.id);
-      let updated;
-      if (exists) {
-        updated = savedItems.filter((m) => m.id !== item.id);
+      const existingIndex = savedItems.findIndex((m) => m.id === item.id);
+      let updated = [...savedItems];
+
+      if (existingIndex > -1) {
+        if (updated[existingIndex].status === targetStatus) {
+          updated.splice(existingIndex, 1); // Remove if clicked same button
+        } else {
+          updated[existingIndex].status = targetStatus; // Switch between watchlist and watched
+        }
       } else {
-        updated = [{ ...item, media_type_saved: mediaType }, ...savedItems];
+        updated.unshift({ ...item, media_type_saved: mediaType, status: targetStatus });
       }
+
       setSavedItems(updated);
 
       await fetch(`${SUPABASE_URL}/rest/v1/users_vault?email=eq.${encodeURIComponent(currentUser.email)}`, {
@@ -340,9 +348,15 @@ export default function App() {
     }
   };
 
+  const getItemStatus = (id) => {
+    const found = savedItems.find((m) => m.id === id);
+    return found ? found.status : null;
+  };
+
   const fetchMedia = async (pageNumber = 1, shouldReset = false) => {
     if (tab === 'saved') {
-      setItems(savedItems);
+      const filtered = savedItems.filter((m) => (m.status || 'watchlist') === savedSubTab);
+      setItems(filtered);
       setLoading(false);
       return;
     }
@@ -384,7 +398,7 @@ export default function App() {
   useEffect(() => {
     setPage(1);
     fetchMedia(1, true);
-  }, [mediaType, tab, selectedGenre]);
+  }, [mediaType, tab, savedSubTab, selectedGenre, savedItems]);
 
   const handleLoadMore = () => {
     if (!loadingMore && page < totalPages && tab !== 'saved') {
@@ -425,9 +439,10 @@ export default function App() {
       setDetailLoading(false);
     }
   };
+    const watchlistCount = savedItems.filter((m) => (m.status || 'watchlist') === 'watchlist').length;
+  const watchedCount = savedItems.filter((m) => m.status === 'watched').length;
 
-  const isSaved = (id) => savedItems.some((m) => m.id === id);
-    return (
+  return (
     <SafeAreaView style={styles.container}>
       <StatusBar barStyle="light-content" backgroundColor="#0f0f0f" />
 
@@ -499,6 +514,31 @@ export default function App() {
         ))}
       </View>
 
+      {/* Dual Sub-Tabs for Saved Section */}
+      {tab === 'saved' && (
+        <View style={styles.savedSubTabRow}>
+          <TouchableOpacity
+            style={[styles.savedSubTabBtn, savedSubTab === 'watchlist' && styles.savedSubTabBtnActive]}
+            onPress={() => setSavedSubTab('watchlist')}
+          >
+            <Ionicons name="bookmark" size={14} color={savedSubTab === 'watchlist' ? '#fff' : '#888'} />
+            <Text style={[styles.savedSubTabText, savedSubTab === 'watchlist' && styles.savedSubTabTextActive]}>
+              Want to Watch ({watchlistCount})
+            </Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            style={[styles.savedSubTabBtn, savedSubTab === 'watched' && styles.savedSubTabBtnActive]}
+            onPress={() => setSavedSubTab('watched')}
+          >
+            <Ionicons name="checkmark-circle" size={14} color={savedSubTab === 'watched' ? '#fff' : '#888'} />
+            <Text style={[styles.savedSubTabText, savedSubTab === 'watched' && styles.savedSubTabTextActive]}>
+              Watched ({watchedCount})
+            </Text>
+          </TouchableOpacity>
+        </View>
+      )}
+
       {/* Search */}
       {tab !== 'saved' && (
         <View style={styles.searchBox}>
@@ -540,7 +580,13 @@ export default function App() {
       ) : items.length === 0 ? (
         <View style={styles.emptyView}>
           <Ionicons name="film-outline" size={50} color="#444" />
-          <Text style={styles.emptyText}>No titles found.</Text>
+          <Text style={styles.emptyText}>
+            {tab === 'saved'
+              ? savedSubTab === 'watchlist'
+                ? 'No movies added to Watchlist yet.'
+                : 'No movies marked as Watched yet.'
+              : 'No titles found.'}
+          </Text>
         </View>
       ) : (
         <FlatList
@@ -558,6 +604,7 @@ export default function App() {
             const title = item.title || item.name;
             const date = item.release_date || item.first_air_date || 'N/A';
             const isSeries = !!item.first_air_date || mediaType === 'tv';
+            const status = getItemStatus(item.id);
 
             return (
               <TouchableOpacity style={styles.movieCard} activeOpacity={0.8} onPress={() => openDetails(item)}>
@@ -577,9 +624,16 @@ export default function App() {
                     <Text style={styles.detailBtnText}> Details</Text>
                   </TouchableOpacity>
                 </View>
-                <TouchableOpacity style={styles.saveIcon} onPress={() => toggleSaveItem(item)}>
-                  <Ionicons name={isSaved(item.id) ? 'heart' : 'heart-outline'} size={22} color={isSaved(item.id) ? '#E50914' : '#fff'} />
-                </TouchableOpacity>
+
+                {/* Dual Quick Action Icons */}
+                <View style={styles.cardActions}>
+                  <TouchableOpacity style={styles.iconBtnAction} onPress={() => toggleSaveItem(item, 'watchlist')}>
+                    <Ionicons name={status === 'watchlist' ? 'bookmark' : 'bookmark-outline'} size={20} color={status === 'watchlist' ? '#E50914' : '#888'} />
+                  </TouchableOpacity>
+                  <TouchableOpacity style={styles.iconBtnAction} onPress={() => toggleSaveItem(item, 'watched')}>
+                    <Ionicons name={status === 'watched' ? 'checkmark-circle' : 'checkmark-circle-outline'} size={21} color={status === 'watched' ? '#4CAF50' : '#888'} />
+                  </TouchableOpacity>
+                </View>
               </TouchableOpacity>
             );
           }}
@@ -604,14 +658,34 @@ export default function App() {
             <View style={styles.modalBody}>
               <View style={styles.modalTitleRow}>
                 <Text style={styles.modalTitle}>{selectedItem ? selectedItem.title || selectedItem.name : ''}</Text>
-                <TouchableOpacity onPress={() => selectedItem && toggleSaveItem(selectedItem)}>
-                  <Ionicons name={selectedItem && isSaved(selectedItem.id) ? 'heart' : 'heart-outline'} size={26} color={selectedItem && isSaved(selectedItem.id) ? '#E50914' : '#fff'} />
-                </TouchableOpacity>
               </View>
 
               <Text style={styles.modalSubtitle}>
                 ⭐ {selectedItem && selectedItem.vote_average ? selectedItem.vote_average.toFixed(1) : 'N/A'}/10 | 📅 {selectedItem ? selectedItem.release_date || selectedItem.first_air_date : ''}
               </Text>
+
+              {/* Status Action Buttons in Modal */}
+              <View style={styles.modalStatusRow}>
+                <TouchableOpacity
+                  style={[styles.modalStatusBtn, selectedItem && getItemStatus(selectedItem.id) === 'watchlist' && styles.modalStatusBtnActiveWatchlist]}
+                  onPress={() => selectedItem && toggleSaveItem(selectedItem, 'watchlist')}
+                >
+                  <Ionicons name="bookmark" size={16} color="#fff" />
+                  <Text style={styles.modalStatusBtnText}>
+                    {selectedItem && getItemStatus(selectedItem.id) === 'watchlist' ? 'In Watchlist' : 'Want to Watch'}
+                  </Text>
+                </TouchableOpacity>
+
+                <TouchableOpacity
+                  style={[styles.modalStatusBtn, selectedItem && getItemStatus(selectedItem.id) === 'watched' && styles.modalStatusBtnActiveWatched]}
+                  onPress={() => selectedItem && toggleSaveItem(selectedItem, 'watched')}
+                >
+                  <Ionicons name="checkmark-circle" size={16} color="#fff" />
+                  <Text style={styles.modalStatusBtnText}>
+                    {selectedItem && getItemStatus(selectedItem.id) === 'watched' ? 'Watched' : 'Mark as Watched'}
+                  </Text>
+                </TouchableOpacity>
+              </View>
 
               {trailerKey ? (
                 <TouchableOpacity style={styles.trailerBtn} onPress={() => Linking.openURL(`https://www.youtube.com/watch?v=${trailerKey}`)}>
@@ -641,7 +715,7 @@ export default function App() {
                     </View>
                   ) : null}
 
-                  {/* Interactive Cast */}
+                  {/* Interactive Top Cast */}
                   {cast.length > 0 ? (
                     <View style={{ marginTop: 16 }}>
                       <Text style={styles.sectionHeader}>Top Cast (Tap to view movies)</Text>
@@ -763,9 +837,11 @@ export default function App() {
             <Text style={styles.profileEmailText}>{currentUser ? currentUser.email : ''}</Text>
 
             <View style={styles.profileInfoCard}>
-              <Ionicons name="bookmark" size={18} color="#E50914" style={{ marginRight: 8 }} />
               <Text style={styles.profileInfoText}>
-                Saved Movies: <Text style={{ color: '#fff', fontWeight: 'bold' }}>{savedItems.length}</Text>
+                📌 Watchlist: <Text style={{ color: '#fff', fontWeight: 'bold' }}>{watchlistCount}</Text>
+              </Text>
+              <Text style={[styles.profileInfoText, { marginTop: 4 }]}>
+                ✅ Watched: <Text style={{ color: '#fff', fontWeight: 'bold' }}>{watchedCount}</Text>
               </Text>
             </View>
 
@@ -911,6 +987,11 @@ const styles = StyleSheet.create({
   tabButtonActive: { backgroundColor: '#333' },
   tabText: { color: '#888', fontSize: 11, fontWeight: '700' },
   tabTextActive: { color: '#fff' },
+  savedSubTabRow: { flexDirection: 'row', marginHorizontal: 16, marginBottom: 10, gap: 10 },
+  savedSubTabBtn: { flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', backgroundColor: '#1E1E1E', paddingVertical: 8, borderRadius: 8, gap: 6 },
+  savedSubTabBtnActive: { backgroundColor: '#2a2a2a', borderWidth: 1, borderColor: '#E50914' },
+  savedSubTabText: { color: '#888', fontSize: 11, fontWeight: 'bold' },
+  savedSubTabTextActive: { color: '#fff' },
   searchBox: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#1E1E1E', marginHorizontal: 16, borderRadius: 6, paddingHorizontal: 10, height: 36, marginBottom: 6 },
   searchInput: { flex: 1, color: '#fff', fontSize: 12 },
   genreList: { paddingHorizontal: 16, gap: 6, alignItems: 'center' },
@@ -929,17 +1010,23 @@ const styles = StyleSheet.create({
   rating: { color: '#FFD700', fontSize: 11, fontWeight: 'bold', marginBottom: 4 },
   detailBtn: { alignSelf: 'flex-start', backgroundColor: '#2a2a2c', paddingVertical: 3, paddingHorizontal: 6, borderRadius: 4, flexDirection: 'row', alignItems: 'center' },
   detailBtnText: { color: '#fff', fontSize: 10, fontWeight: '600' },
-  saveIcon: { position: 'absolute', top: 8, right: 8, padding: 2 },
+  cardActions: { position: 'absolute', top: 6, right: 6, flexDirection: 'row', gap: 6 },
+  iconBtnAction: { backgroundColor: 'rgba(0,0,0,0.6)', padding: 5, borderRadius: 20 },
   emptyView: { flex: 1, justifyContent: 'center', alignItems: 'center', marginTop: 80 },
-  emptyText: { color: '#888', fontSize: 14, marginTop: 8 },
+  emptyText: { color: '#888', fontSize: 13, marginTop: 8, textAlign: 'center', paddingHorizontal: 20 },
   modalContainer: { flex: 1, backgroundColor: '#121212' },
   backdropBox: { width: '100%', height: 200, position: 'relative' },
   backdropImage: { width: '100%', height: 100 },
   closeBtn: { position: 'absolute', top: 16, right: 16, backgroundColor: 'rgba(0,0,0,0.6)', borderRadius: 16, padding: 4 },
   modalBody: { padding: 14 },
   modalTitleRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
-  modalTitle: { color: '#fff', fontSize: 18, fontWeight: '900', flex: 1, marginRight: 8 },
+  modalTitle: { color: '#fff', fontSize: 18, fontWeight: '900', flex: 1 },
   modalSubtitle: { color: '#999', fontSize: 12, marginTop: 2, marginBottom: 10 },
+  modalStatusRow: { flexDirection: 'row', gap: 10, marginBottom: 12 },
+  modalStatusBtn: { flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', backgroundColor: '#262626', paddingVertical: 8, borderRadius: 6, gap: 6 },
+  modalStatusBtnActiveWatchlist: { backgroundColor: '#E50914' },
+  modalStatusBtnActiveWatched: { backgroundColor: '#2E7D32' },
+  modalStatusBtnText: { color: '#fff', fontSize: 11, fontWeight: 'bold' },
   trailerBtn: { backgroundColor: '#E50914', paddingVertical: 8, borderRadius: 6, flexDirection: 'row', justifyContent: 'center', alignItems: 'center', marginBottom: 12 },
   trailerBtnText: { color: '#fff', fontWeight: 'bold', fontSize: 12 },
   sectionHeader: { color: '#fff', fontSize: 14, fontWeight: 'bold', marginTop: 10, marginBottom: 4 },
@@ -978,7 +1065,7 @@ const styles = StyleSheet.create({
   profileAvatar: { backgroundColor: '#E50914', width: 64, height: 64, borderRadius: 32, justifyContent: 'center', alignItems: 'center', marginBottom: 10 },
   profileNameText: { color: '#fff', fontSize: 18, fontWeight: 'bold', textTransform: 'capitalize' },
   profileEmailText: { color: '#888', fontSize: 12, marginTop: 2, marginBottom: 16 },
-  profileInfoCard: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#262626', width: '100%', padding: 12, borderRadius: 8, marginBottom: 16, justifyContent: 'center' },
+  profileInfoCard: { backgroundColor: '#262626', width: '100%', padding: 12, borderRadius: 8, marginBottom: 16, alignItems: 'center' },
   profileInfoText: { color: '#bbb', fontSize: 13 },
   logoutBtnModal: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', backgroundColor: '#E50914', width: '100%', paddingVertical: 12, borderRadius: 8 },
   logoutBtnText: { color: '#fff', fontWeight: 'bold', fontSize: 13 }
