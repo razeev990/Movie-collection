@@ -57,7 +57,7 @@ export default function App() {
   const [page, setPage] = useState(1);
   const [totalPages, setTotalPages] = useState(1);
   const [tab, setTab] = useState('popular');
-  const [savedSubTab, setSavedSubTab] = useState('watchlist'); // 'watchlist' | 'watched'
+  const [savedSubTab, setSavedSubTab] = useState('watchlist');
   const [selectedGenre, setSelectedGenre] = useState('all');
   const [searchQuery, setSearchQuery] = useState('');
   const [savedItems, setSavedItems] = useState([]);
@@ -77,6 +77,9 @@ export default function App() {
   const [actorModalVisible, setActorModalVisible] = useState(false);
   const [actorLoading, setActorLoading] = useState(false);
 
+  // About Modal State
+  const [aboutModalVisible, setAboutModalVisible] = useState(false);
+
   // Cloud Account States
   const [currentUser, setCurrentUser] = useState(null);
   const [authModalVisible, setAuthModalVisible] = useState(false);
@@ -90,7 +93,6 @@ export default function App() {
   const [isSuccessMessage, setIsSuccessMessage] = useState(false);
 
   const genres = mediaType === 'movie' ? MOVIE_GENRES : TV_GENRES;
-
   useEffect(() => {
     restoreSession();
   }, []);
@@ -147,7 +149,7 @@ export default function App() {
       setActorLoading(false);
     }
   };
-  const handleCloudAuth = async () => {
+    const handleCloudAuth = async () => {
     setAuthStatusMessage('');
     const cleanEmail = emailInput.trim().toLowerCase();
 
@@ -308,7 +310,6 @@ export default function App() {
     setProfileModalVisible(false);
   };
 
-  // Toggle Item to 'watchlist' or 'watched'
   const toggleSaveItem = async (item, targetStatus = 'watchlist') => {
     if (!currentUser) {
       setAuthMode('login');
@@ -323,9 +324,9 @@ export default function App() {
 
       if (existingIndex > -1) {
         if (updated[existingIndex].status === targetStatus) {
-          updated.splice(existingIndex, 1); // Remove if clicked same button
+          updated.splice(existingIndex, 1);
         } else {
-          updated[existingIndex].status = targetStatus; // Switch between watchlist and watched
+          updated[existingIndex].status = targetStatus;
         }
       } else {
         updated.unshift({ ...item, media_type_saved: mediaType, status: targetStatus });
@@ -352,8 +353,7 @@ export default function App() {
     const found = savedItems.find((m) => m.id === id);
     return found ? found.status : null;
   };
-
-  const fetchMedia = async (pageNumber = 1, shouldReset = false) => {
+    const fetchMedia = async (pageNumber = 1, shouldReset = false) => {
     if (tab === 'saved') {
       const filtered = savedItems.filter((m) => (m.status || 'watchlist') === savedSubTab);
       setItems(filtered);
@@ -439,7 +439,8 @@ export default function App() {
       setDetailLoading(false);
     }
   };
-    const watchlistCount = savedItems.filter((m) => (m.status || 'watchlist') === 'watchlist').length;
+
+  const watchlistCount = savedItems.filter((m) => (m.status || 'watchlist') === 'watchlist').length;
   const watchedCount = savedItems.filter((m) => m.status === 'watched').length;
 
   return (
@@ -458,26 +459,32 @@ export default function App() {
           </View>
         </View>
 
-        {currentUser ? (
-          <TouchableOpacity style={styles.userProfileBtn} onPress={() => setProfileModalVisible(true)}>
-            <Ionicons name="person-circle" size={28} color="#E50914" />
-            <Text style={styles.usernameText} numberOfLines={1}>
-              {currentUser.name}
-            </Text>
+        <View style={styles.headerRight}>
+          <TouchableOpacity style={styles.aboutIconBtn} onPress={() => setAboutModalVisible(true)}>
+            <Ionicons name="information-circle-outline" size={24} color="#aaa" />
           </TouchableOpacity>
-        ) : (
-          <TouchableOpacity
-            style={styles.loginBtnHeader}
-            onPress={() => {
-              setAuthMode('login');
-              setAuthStatusMessage('');
-              setAuthModalVisible(true);
-            }}
-          >
-            <Ionicons name="cloud-outline" size={15} color="#fff" />
-            <Text style={styles.loginBtnHeaderText}>Login</Text>
-          </TouchableOpacity>
-        )}
+
+          {currentUser ? (
+            <TouchableOpacity style={styles.userProfileBtn} onPress={() => setProfileModalVisible(true)}>
+              <Ionicons name="person-circle" size={28} color="#E50914" />
+              <Text style={styles.usernameText} numberOfLines={1}>
+                {currentUser.name}
+              </Text>
+            </TouchableOpacity>
+          ) : (
+            <TouchableOpacity
+              style={styles.loginBtnHeader}
+              onPress={() => {
+                setAuthMode('login');
+                setAuthStatusMessage('');
+                setAuthModalVisible(true);
+              }}
+            >
+              <Ionicons name="cloud-outline" size={15} color="#fff" />
+              <Text style={styles.loginBtnHeaderText}>Login</Text>
+            </TouchableOpacity>
+          )}
+        </View>
       </View>
 
       {/* Type Switcher */}
@@ -639,8 +646,7 @@ export default function App() {
           }}
         />
       )}
-
-      {/* Details Modal */}
+            {/* Details Modal */}
       <Modal visible={modalVisible} animationType="slide" transparent={false} onRequestClose={() => setModalVisible(false)}>
         <SafeAreaView style={styles.modalContainer}>
           <StatusBar barStyle="light-content" />
@@ -758,7 +764,8 @@ export default function App() {
           </ScrollView>
         </SafeAreaView>
       </Modal>
-            {/* Actor Filmography Modal */}
+
+      {/* Actor Filmography Modal */}
       <Modal visible={actorModalVisible} animationType="slide" transparent={false} onRequestClose={() => setActorModalVisible(false)}>
         <SafeAreaView style={styles.modalContainer}>
           <StatusBar barStyle="light-content" />
@@ -824,6 +831,35 @@ export default function App() {
             </ScrollView>
           )}
         </SafeAreaView>
+      </Modal>
+            {/* About Section Modal */}
+      <Modal visible={aboutModalVisible} animationType="fade" transparent onRequestClose={() => setAboutModalVisible(false)}>
+        <View style={styles.authModalBg}>
+          <View style={styles.aboutBox}>
+            <View style={styles.aboutIconContainer}>
+              <Ionicons name="film" size={32} color="#fff" />
+            </View>
+            <Text style={styles.aboutAppTitle}>Movie Collection</Text>
+            <Text style={styles.aboutAppVersion}>Version 1.0.0</Text>
+
+            <View style={styles.aboutCard}>
+              <Text style={styles.aboutCreatedLabel}>App created by</Text>
+              <Text style={styles.aboutAuthorName}>Rajeev Kumar sah</Text>
+
+              <TouchableOpacity
+                style={styles.aboutEmailRow}
+                onPress={() => Linking.openURL('mailto:razeevsah@gmail.com')}
+              >
+                <Ionicons name="mail" size={16} color="#E50914" style={{ marginRight: 6 }} />
+                <Text style={styles.aboutEmailText}>razeevsah@gmail.com</Text>
+              </TouchableOpacity>
+            </View>
+
+            <TouchableOpacity style={styles.aboutCloseBtn} onPress={() => setAboutModalVisible(false)}>
+              <Text style={styles.aboutCloseBtnText}>Close</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
       </Modal>
 
       {/* User Profile Card Modal */}
@@ -970,6 +1006,8 @@ const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: '#121212' },
   header: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 16, paddingTop: 10, paddingBottom: 4 },
   headerLeft: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  headerRight: { flexDirection: 'row', alignItems: 'center', gap: 10 },
+  aboutIconBtn: { padding: 4 },
   logoBadge: { backgroundColor: '#E50914', padding: 6, borderRadius: 10 },
   headerTitle: { fontSize: 18, fontWeight: '900', color: '#FFFFFF', letterSpacing: 1 },
   headerSubtitle: { fontSize: 9, color: '#888888', fontWeight: '600' },
@@ -1068,5 +1106,16 @@ const styles = StyleSheet.create({
   profileInfoCard: { backgroundColor: '#262626', width: '100%', padding: 12, borderRadius: 8, marginBottom: 16, alignItems: 'center' },
   profileInfoText: { color: '#bbb', fontSize: 13 },
   logoutBtnModal: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', backgroundColor: '#E50914', width: '100%', paddingVertical: 12, borderRadius: 8 },
-  logoutBtnText: { color: '#fff', fontWeight: 'bold', fontSize: 13 }
+  logoutBtnText: { color: '#fff', fontWeight: 'bold', fontSize: 13 },
+  aboutBox: { width: '100%', backgroundColor: '#1a1a1a', borderRadius: 16, padding: 24, borderWidth: 1, borderColor: '#333', alignItems: 'center' },
+  aboutIconContainer: { backgroundColor: '#E50914', padding: 14, borderRadius: 24, marginBottom: 12 },
+  aboutAppTitle: { color: '#fff', fontSize: 20, fontWeight: 'bold' },
+  aboutAppVersion: { color: '#777', fontSize: 12, marginTop: 2, marginBottom: 16 },
+  aboutCard: { backgroundColor: '#242424', width: '100%', padding: 16, borderRadius: 12, alignItems: 'center', marginBottom: 20 },
+  aboutCreatedLabel: { color: '#888', fontSize: 12, marginBottom: 4 },
+  aboutAuthorName: { color: '#fff', fontSize: 16, fontWeight: 'bold', marginBottom: 10 },
+  aboutEmailRow: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#1a1a1a', paddingHorizontal: 12, paddingVertical: 8, borderRadius: 8 },
+  aboutEmailText: { color: '#E50914', fontSize: 13, fontWeight: '600' },
+  aboutCloseBtn: { backgroundColor: '#333', paddingVertical: 10, paddingHorizontal: 30, borderRadius: 8 },
+  aboutCloseBtnText: { color: '#fff', fontSize: 13, fontWeight: 'bold' }
 });
