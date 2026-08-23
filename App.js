@@ -12,10 +12,13 @@ import {
   TextInput,
   ActivityIndicator,
   Linking,
-  StatusBar,
-  Alert
+  StatusBar
 } from 'react-native';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Ionicons } from '@expo/vector-icons';
+
+const SUPABASE_URL = 'https://zyqlntdpftowobsrzbgv.supabase.co';
+const SUPABASE_KEY = 'sb_publishable_DuyB_EEKvMkDk0QFxQykqg_ZXCMzTwo';
 
 const API_KEY = 'c45a857c193f6302f2b5061c3b85e743';
 const BASE_URL = 'https://api.themoviedb.org/3';
@@ -67,80 +70,274 @@ export default function App() {
   const [trailerKey, setTrailerKey] = useState(null);
   const [detailLoading, setDetailLoading] = useState(false);
 
-  // Auth / Login States
+  // Actor / Person Modal States
+  const [selectedActor, setSelectedActor] = useState(null);
+  const [actorMovies, setActorMovies] = useState([]);
+  const [actorModalVisible, setActorModalVisible] = useState(false);
+  const [actorLoading, setActorLoading] = useState(false);
+
+  // Cloud Account States
   const [currentUser, setCurrentUser] = useState(null);
-  const [usersDb, setUsersDb] = useState([]);
   const [authModalVisible, setAuthModalVisible] = useState(false);
-  const [isSignUp, setIsSignUp] = useState(false);
-  const [usernameInput, setUsernameInput] = useState('');
+  const [profileModalVisible, setProfileModalVisible] = useState(false);
+  const [authMode, setAuthMode] = useState('login');
   const [emailInput, setEmailInput] = useState('');
   const [passwordInput, setPasswordInput] = useState('');
+  const [newPasswordInput, setNewPasswordInput] = useState('');
+  const [authLoading, setAuthLoading] = useState(false);
+  const [authStatusMessage, setAuthStatusMessage] = useState('');
+  const [isSuccessMessage, setIsSuccessMessage] = useState(false);
 
   const genres = mediaType === 'movie' ? MOVIE_GENRES : TV_GENRES;
 
-  const toggleSaveItem = (item) => {
+  useEffect(() => {
+    restoreSession();
+  }, []);
+
+  const restoreSession = async () => {
+    try {
+      const userStr = await AsyncStorage.getItem('@cloud_active_account');
+      if (userStr) {
+        const user = JSON.parse(userStr);
+        setCurrentUser(user);
+        syncWatchlistFromCloud(user.email);
+      }
+    } catch (e) {
+      console.log('Session error:', e);
+    }
+  };
+
+  const syncWatchlistFromCloud = async (email) => {
+    try {
+      const res = await fetch(`${SUPABASE_URL}/rest/v1/users_vault?email=eq.${encodeURIComponent(email)}`, {
+        headers: {
+          'apikey': SUPABASE_KEY,
+          'Authorization': `Bearer ${SUPABASE_KEY}`
+        }
+      });
+      const data = await res.json();
+      if (data && data.length > 0 && data[0].saved_movies) {
+        setSavedItems(data[0].saved_movies);
+      }
+    } catch (e) {
+      console.log('Cloud sync error:', e);
+    }
+  };
+
+  const openActorDetails = async (person) => {
+    setSelectedActor(person);
+    setActorModalVisible(true);
+    setActorLoading(true);
+    try {
+      const bioRes = await fetch(`${BASE_URL}/person/${person.id}?api_key=${API_KEY}&language=en-US`);
+      const bioData = await bioRes.json();
+      setSelectedActor(bioData);
+
+      const creditsRes = await fetch(`${BASE_URL}/person/${person.id}/combined_credits?api_key=${API_KEY}&language=en-US`);
+      const creditsData = await creditsRes.json();
+      const sortedCredits = (creditsData.cast || [])
+        .filter((m) => m.poster_path)
+        .sort((a, b) => (b.vote_count || 0) - (a.vote_count || 0));
+
+      setActorMovies(sortedCredits);
+    } catch (err) {
+      console.log('Actor fetch error:', err);
+    } finally {
+      setActorLoading(false);
+    }
+  };
+  const handleCloudAuth = async () => {
+    setAuthStatusMessage('');
+    const cleanEmail = emailInput.trim().toLowerCase();
+
+    if (!cleanEmail || !cleanEmail.includes('@')) {
+      setIsSuccessMessage(false);
+      setAuthStatusMessage('Please enter a valid Gmail address.');
+      return;
+    }
+
+    setAuthLoading(true);
+
+    try {
+      if (authMode === 'signup') {
+        const cleanPass = passwordInput.trim();
+        if (!cleanPass || cleanPass.length < 4) {
+          setIsSuccessMessage(false);
+          setAuthStatusMessage('Password must be at least 4 characters.');
+          setAuthLoading(false);
+          return;
+        }
+
+        const checkRes = await fetch(`${SUPABASE_URL}/rest/v1/users_vault?email=eq.${encodeURIComponent(cleanEmail)}`, {
+          headers: { 'apikey': SUPABASE_KEY, 'Authorization': `Bearer ${SUPABASE_KEY}` }
+        });
+        const checkData = await checkRes.json();
+
+        if (checkData && checkData.length > 0) {
+          setIsSuccessMessage(false);
+          setAuthStatusMessage('Account already exists! Please click Login.');
+          setAuthLoading(false);
+          return;
+        }
+
+        const insertRes = await fetch(`${SUPABASE_URL}/rest/v1/users_vault`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'apikey': SUPABASE_KEY,
+            'Authorization': `Bearer ${SUPABASE_KEY}`,
+            'Prefer': 'return=minimal'
+          },
+          body: JSON.stringify({ email: cleanEmail, password: cleanPass, saved_movies: [] })
+        });
+
+        if (insertRes.ok) {
+          const userObj = { email: cleanEmail, name: cleanEmail.split('@')[0] };
+          await AsyncStorage.setItem('@cloud_active_account', JSON.stringify(userObj));
+          setCurrentUser(userObj);
+          setSavedItems([]);
+          setIsSuccessMessage(true);
+          setAuthStatusMessage(`Account created! Welcome, ${userObj.name}`);
+
+          setTimeout(() => {
+            setAuthModalVisible(false);
+            setEmailInput('');
+            setPasswordInput('');
+            setAuthStatusMessage('');
+          }, 1000);
+        } else {
+          setIsSuccessMessage(false);
+          setAuthStatusMessage('Server error creating account.');
+        }
+      } else if (authMode === 'login') {
+        const cleanPass = passwordInput.trim();
+        if (!cleanPass) {
+          setIsSuccessMessage(false);
+          setAuthStatusMessage('Please enter your password.');
+          setAuthLoading(false);
+          return;
+        }
+
+        const res = await fetch(`${SUPABASE_URL}/rest/v1/users_vault?email=eq.${encodeURIComponent(cleanEmail)}`, {
+          headers: { 'apikey': SUPABASE_KEY, 'Authorization': `Bearer ${SUPABASE_KEY}` }
+        });
+        const data = await res.json();
+
+        if (!data || data.length === 0) {
+          setIsSuccessMessage(false);
+          setAuthStatusMessage('No account found with this Gmail. Click Sign Up.');
+          setAuthLoading(false);
+          return;
+        }
+
+        if (data[0].password !== cleanPass) {
+          setIsSuccessMessage(false);
+          setAuthStatusMessage('Incorrect Password! If forgotten, click Forgot Password.');
+          setAuthLoading(false);
+          return;
+        }
+
+        const userObj = { email: cleanEmail, name: cleanEmail.split('@')[0] };
+        await AsyncStorage.setItem('@cloud_active_account', JSON.stringify(userObj));
+        setCurrentUser(userObj);
+        setSavedItems(data[0].saved_movies || []);
+
+        setIsSuccessMessage(true);
+        setAuthStatusMessage(`Welcome back, ${userObj.name}! Watchlist restored.`);
+
+        setTimeout(() => {
+          setAuthModalVisible(false);
+          setEmailInput('');
+          setPasswordInput('');
+          setAuthStatusMessage('');
+        }, 1000);
+      } else if (authMode === 'forgot') {
+        const cleanNewPass = newPasswordInput.trim();
+        if (!cleanNewPass || cleanNewPass.length < 4) {
+          setIsSuccessMessage(false);
+          setAuthStatusMessage('New password must be at least 4 characters.');
+          setAuthLoading(false);
+          return;
+        }
+
+        const patchRes = await fetch(`${SUPABASE_URL}/rest/v1/users_vault?email=eq.${encodeURIComponent(cleanEmail)}`, {
+          method: 'PATCH',
+          headers: {
+            'Content-Type': 'application/json',
+            'apikey': SUPABASE_KEY,
+            'Authorization': `Bearer ${SUPABASE_KEY}`,
+            'Prefer': 'return=minimal'
+          },
+          body: JSON.stringify({ password: cleanNewPass })
+        });
+
+        if (patchRes.ok) {
+          const userObj = { email: cleanEmail, name: cleanEmail.split('@')[0] };
+          await AsyncStorage.setItem('@cloud_active_account', JSON.stringify(userObj));
+          setCurrentUser(userObj);
+          syncWatchlistFromCloud(cleanEmail);
+
+          setIsSuccessMessage(true);
+          setAuthStatusMessage('Password updated! Logged in.');
+
+          setTimeout(() => {
+            setAuthModalVisible(false);
+            setEmailInput('');
+            setNewPasswordInput('');
+            setAuthMode('login');
+            setAuthStatusMessage('');
+          }, 1000);
+        } else {
+          setIsSuccessMessage(false);
+          setAuthStatusMessage('Could not reset password.');
+        }
+      }
+    } catch (e) {
+      setIsSuccessMessage(false);
+      setAuthStatusMessage('Network error: ' + e.message);
+    } finally {
+      setAuthLoading(false);
+    }
+  };
+
+  const handleLogout = async () => {
+    await AsyncStorage.removeItem('@cloud_active_account');
+    setCurrentUser(null);
+    setSavedItems([]);
+    setProfileModalVisible(false);
+  };
+
+  const toggleSaveItem = async (item) => {
     if (!currentUser) {
-      Alert.alert('Login Required', 'Please login to save movies to your list.', [
-        { text: 'Cancel', style: 'cancel' },
-        { text: 'Login', onPress: () => setAuthModalVisible(true) }
-      ]);
-      return;
-    }
-    const exists = savedItems.some((m) => m.id === item.id);
-    if (exists) {
-      setSavedItems(savedItems.filter((m) => m.id !== item.id));
-    } else {
-      setSavedItems([{ ...item, media_type_saved: mediaType }, ...savedItems]);
-    }
-  };
-
-  const handleAuth = () => {
-    if (!emailInput.trim() || !passwordInput.trim()) {
-      Alert.alert('Error', 'Please fill all required fields');
+      setAuthMode('login');
+      setAuthStatusMessage('Please login to save movies to Cloud.');
+      setAuthModalVisible(true);
       return;
     }
 
-    if (isSignUp) {
-      if (!usernameInput.trim()) {
-        Alert.alert('Error', 'Please enter your username');
-        return;
+    try {
+      const exists = savedItems.some((m) => m.id === item.id);
+      let updated;
+      if (exists) {
+        updated = savedItems.filter((m) => m.id !== item.id);
+      } else {
+        updated = [{ ...item, media_type_saved: mediaType }, ...savedItems];
       }
-      const existingUser = usersDb.find((u) => u.email.toLowerCase() === emailInput.toLowerCase());
-      if (existingUser) {
-        Alert.alert('Error', 'Account already exists with this email.');
-        return;
-      }
-      const newUser = { username: usernameInput, email: emailInput, password: passwordInput };
-      setUsersDb([...usersDb, newUser]);
-      setCurrentUser(newUser);
-      Alert.alert('Welcome!', `Account created successfully, ${newUser.username}!`);
-    } else {
-      const user = usersDb.find(
-        (u) => u.email.toLowerCase() === emailInput.toLowerCase() && u.password === passwordInput
-      );
-      if (!user) {
-        Alert.alert('Error', 'Invalid email or password. Please Sign Up if new.');
-        return;
-      }
-      setCurrentUser(user);
-      Alert.alert('Success', `Welcome back, ${user.username}!`);
+      setSavedItems(updated);
+
+      await fetch(`${SUPABASE_URL}/rest/v1/users_vault?email=eq.${encodeURIComponent(currentUser.email)}`, {
+        method: 'PATCH',
+        headers: {
+          'Content-Type': 'application/json',
+          'apikey': SUPABASE_KEY,
+          'Authorization': `Bearer ${SUPABASE_KEY}`,
+          'Prefer': 'return=minimal'
+        },
+        body: JSON.stringify({ saved_movies: updated })
+      });
+    } catch (e) {
+      console.log('Save error:', e);
     }
-
-    setUsernameInput('');
-    setEmailInput('');
-    setPasswordInput('');
-    setAuthModalVisible(false);
-  };
-
-  const handleLogout = () => {
-    Alert.alert('Logout', 'Are you sure you want to log out?', [
-      { text: 'Cancel', style: 'cancel' },
-      {
-        text: 'Logout',
-        style: 'destructive',
-        onPress: () => setCurrentUser(null)
-      }
-    ]);
   };
 
   const fetchMedia = async (pageNumber = 1, shouldReset = false) => {
@@ -198,7 +395,7 @@ export default function App() {
   };
 
   const openDetails = async (item) => {
-    const type = item.media_type_saved || mediaType;
+    const type = item.media_type_saved || item.media_type || mediaType;
     setSelectedItem({ ...item, currentType: type });
     setModalVisible(true);
     setDetailLoading(true);
@@ -207,7 +404,7 @@ export default function App() {
       const endpoint = type === 'movie' ? 'movie' : 'tv';
       const credRes = await fetch(`${BASE_URL}/${endpoint}/${item.id}/credits?api_key=${API_KEY}`);
       const credJson = await credRes.json();
-      setCast(credJson.cast ? credJson.cast.slice(0, 10) : []);
+      setCast(credJson.cast ? credJson.cast.slice(0, 15) : []);
 
       const vidRes = await fetch(`${BASE_URL}/${endpoint}/${item.id}/videos?api_key=${API_KEY}`);
       const vidJson = await vidRes.json();
@@ -230,11 +427,11 @@ export default function App() {
   };
 
   const isSaved = (id) => savedItems.some((m) => m.id === id);
-  return (
+    return (
     <SafeAreaView style={styles.container}>
       <StatusBar barStyle="light-content" backgroundColor="#0f0f0f" />
 
-      {/* Header with Login Profile */}
+      {/* Header */}
       <View style={styles.header}>
         <View style={styles.headerLeft}>
           <View style={styles.logoBadge}>
@@ -247,15 +444,22 @@ export default function App() {
         </View>
 
         {currentUser ? (
-          <TouchableOpacity style={styles.userProfileBtn} onPress={handleLogout}>
+          <TouchableOpacity style={styles.userProfileBtn} onPress={() => setProfileModalVisible(true)}>
             <Ionicons name="person-circle" size={28} color="#E50914" />
             <Text style={styles.usernameText} numberOfLines={1}>
-              {currentUser.username}
+              {currentUser.name}
             </Text>
           </TouchableOpacity>
         ) : (
-          <TouchableOpacity style={styles.loginBtnHeader} onPress={() => setAuthModalVisible(true)}>
-            <Ionicons name="log-in-outline" size={15} color="#fff" />
+          <TouchableOpacity
+            style={styles.loginBtnHeader}
+            onPress={() => {
+              setAuthMode('login');
+              setAuthStatusMessage('');
+              setAuthModalVisible(true);
+            }}
+          >
+            <Ionicons name="cloud-outline" size={15} color="#fff" />
             <Text style={styles.loginBtnHeaderText}>Login</Text>
           </TouchableOpacity>
         )}
@@ -381,7 +585,8 @@ export default function App() {
           }}
         />
       )}
-          {/* Details Modal */}
+
+      {/* Details Modal */}
       <Modal visible={modalVisible} animationType="slide" transparent={false} onRequestClose={() => setModalVisible(false)}>
         <SafeAreaView style={styles.modalContainer}>
           <StatusBar barStyle="light-content" />
@@ -436,16 +641,25 @@ export default function App() {
                     </View>
                   ) : null}
 
+                  {/* Interactive Cast */}
                   {cast.length > 0 ? (
                     <View style={{ marginTop: 16 }}>
-                      <Text style={styles.sectionHeader}>Top Cast</Text>
+                      <Text style={styles.sectionHeader}>Top Cast (Tap to view movies)</Text>
                       <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginTop: 6 }}>
                         {cast.map((c) => (
-                          <View key={c.id} style={{ width: 70, marginRight: 8, alignItems: 'center' }}>
-                            <Image source={{ uri: c.profile_path ? `https://image.tmdb.org/t/p/w200${c.profile_path}` : 'https://via.placeholder.com/100x150/2c2c2e/ffffff?text=Actor' }} style={{ width: 60, height: 80, borderRadius: 6, marginBottom: 2 }} />
-                            <Text style={{ color: '#fff', fontSize: 9, fontWeight: '600', textAlign: 'center' }} numberOfLines={1}>{c.name}</Text>
-                            <Text style={{ color: '#777', fontSize: 8, textAlign: 'center' }} numberOfLines={1}>{c.character}</Text>
-                          </View>
+                          <TouchableOpacity
+                            key={c.id}
+                            style={styles.actorCardTouch}
+                            activeOpacity={0.7}
+                            onPress={() => openActorDetails(c)}
+                          >
+                            <Image
+                              source={{ uri: c.profile_path ? `https://image.tmdb.org/t/p/w200${c.profile_path}` : 'https://via.placeholder.com/100x150/2c2c2e/ffffff?text=Actor' }}
+                              style={styles.actorImg}
+                            />
+                            <Text style={styles.actorName} numberOfLines={1}>{c.name}</Text>
+                            <Text style={styles.actorChar} numberOfLines={1}>{c.character}</Text>
+                          </TouchableOpacity>
                         ))}
                       </ScrollView>
                     </View>
@@ -470,29 +684,127 @@ export default function App() {
           </ScrollView>
         </SafeAreaView>
       </Modal>
+            {/* Actor Filmography Modal */}
+      <Modal visible={actorModalVisible} animationType="slide" transparent={false} onRequestClose={() => setActorModalVisible(false)}>
+        <SafeAreaView style={styles.modalContainer}>
+          <StatusBar barStyle="light-content" />
+          <View style={styles.actorModalHeader}>
+            <TouchableOpacity onPress={() => setActorModalVisible(false)} style={styles.actorBackBtn}>
+              <Ionicons name="arrow-back" size={24} color="#fff" />
+            </TouchableOpacity>
+            <Text style={styles.actorHeaderTitle} numberOfLines={1}>{selectedActor ? selectedActor.name : 'Actor'}</Text>
+            <View style={{ width: 30 }} />
+          </View>
 
-      {/* Auth / Login Modal */}
+          {actorLoading ? (
+            <ActivityIndicator size="large" color="#E50914" style={{ marginTop: 60 }} />
+          ) : (
+            <ScrollView contentContainerStyle={{ padding: 16 }}>
+              <View style={styles.actorProfileRow}>
+                <Image
+                  source={{ uri: selectedActor && selectedActor.profile_path ? `${IMAGE_BASE}${selectedActor.profile_path}` : 'https://via.placeholder.com/150' }}
+                  style={styles.actorProfileBigImg}
+                />
+                <View style={{ flex: 1, marginLeft: 14, justifyContent: 'center' }}>
+                  <Text style={styles.actorNameBig}>{selectedActor ? selectedActor.name : ''}</Text>
+                  <Text style={styles.actorDept}>{selectedActor ? selectedActor.known_for_department : 'Acting'}</Text>
+                  {selectedActor && selectedActor.birthday ? (
+                    <Text style={styles.actorBirth}>🎂 {selectedActor.birthday}</Text>
+                  ) : null}
+                  {selectedActor && selectedActor.place_of_birth ? (
+                    <Text style={styles.actorBirth} numberOfLines={1}>📍 {selectedActor.place_of_birth}</Text>
+                  ) : null}
+                </View>
+              </View>
+
+              {selectedActor && selectedActor.biography ? (
+                <View style={{ marginVertical: 12 }}>
+                  <Text style={styles.sectionHeader}>Biography</Text>
+                  <Text style={styles.overviewText} numberOfLines={5}>{selectedActor.biography}</Text>
+                </View>
+              ) : null}
+
+              <Text style={[styles.sectionHeader, { marginTop: 14, marginBottom: 10 }]}>
+                Known For ({actorMovies.length} Movies & Series)
+              </Text>
+
+              <View style={styles.filmographyGrid}>
+                {actorMovies.map((movie, idx) => (
+                  <TouchableOpacity
+                    key={`${movie.id}-${idx}`}
+                    style={styles.gridItem}
+                    onPress={() => {
+                      setActorModalVisible(false);
+                      openDetails(movie);
+                    }}
+                  >
+                    <Image
+                      source={{ uri: movie.poster_path ? `${IMAGE_BASE}${movie.poster_path}` : 'https://via.placeholder.com/120x180' }}
+                      style={styles.gridPoster}
+                    />
+                    <Text style={styles.gridTitle} numberOfLines={1}>{movie.title || movie.name}</Text>
+                    <Text style={styles.gridCharacter} numberOfLines={1}>as {movie.character || 'Self'}</Text>
+                  </TouchableOpacity>
+                ))}
+              </View>
+            </ScrollView>
+          )}
+        </SafeAreaView>
+      </Modal>
+
+      {/* User Profile Card Modal */}
+      <Modal visible={profileModalVisible} animationType="fade" transparent onRequestClose={() => setProfileModalVisible(false)}>
+        <View style={styles.authModalBg}>
+          <View style={styles.profileBox}>
+            <View style={styles.profileAvatar}>
+              <Ionicons name="person" size={36} color="#fff" />
+            </View>
+            <Text style={styles.profileNameText}>{currentUser ? currentUser.name : 'User'}</Text>
+            <Text style={styles.profileEmailText}>{currentUser ? currentUser.email : ''}</Text>
+
+            <View style={styles.profileInfoCard}>
+              <Ionicons name="bookmark" size={18} color="#E50914" style={{ marginRight: 8 }} />
+              <Text style={styles.profileInfoText}>
+                Saved Movies: <Text style={{ color: '#fff', fontWeight: 'bold' }}>{savedItems.length}</Text>
+              </Text>
+            </View>
+
+            <TouchableOpacity style={styles.logoutBtnModal} onPress={handleLogout}>
+              <Ionicons name="log-out-outline" size={18} color="#fff" style={{ marginRight: 6 }} />
+              <Text style={styles.logoutBtnText}>Logout Account</Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity style={styles.authCancelBtn} onPress={() => setProfileModalVisible(false)}>
+              <Text style={styles.authCancelText}>Close</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
+
+      {/* Cloud Authentication Modal */}
       <Modal visible={authModalVisible} animationType="fade" transparent onRequestClose={() => setAuthModalVisible(false)}>
         <View style={styles.authModalBg}>
           <View style={styles.authBox}>
-            <Text style={styles.authTitle}>{isSignUp ? 'Create Account' : 'Welcome Back'}</Text>
+            <Text style={styles.authTitle}>
+              {authMode === 'signup' ? 'Create Cloud Account' : authMode === 'forgot' ? 'Reset Password' : 'Cloud Login'}
+            </Text>
             <Text style={styles.authSubtitle}>
-              {isSignUp ? 'Sign up to manage your watchlist' : 'Login to access your saved movies'}
+              {authMode === 'signup'
+                ? 'Sign up once to sync your watchlist across any device forever'
+                : authMode === 'forgot'
+                ? 'Enter your registered Gmail & New Password'
+                : 'Enter your Gmail ID & Password'}
             </Text>
 
-            {isSignUp && (
-              <TextInput
-                style={styles.authInput}
-                placeholder="Full Name / Username"
-                placeholderTextColor="#777"
-                value={usernameInput}
-                onChangeText={setUsernameInput}
-              />
-            )}
+            {authStatusMessage ? (
+              <View style={[styles.statusBox, { backgroundColor: isSuccessMessage ? '#1b5e20' : '#b71c1c' }]}>
+                <Text style={styles.statusText}>{authStatusMessage}</Text>
+              </View>
+            ) : null}
 
             <TextInput
               style={styles.authInput}
-              placeholder="Email Address"
+              placeholder="Gmail Address (e.g. name@gmail.com)"
               placeholderTextColor="#777"
               keyboardType="email-address"
               autoCapitalize="none"
@@ -500,26 +812,75 @@ export default function App() {
               onChangeText={setEmailInput}
             />
 
-            <TextInput
-              style={styles.authInput}
-              placeholder="Password"
-              placeholderTextColor="#777"
-              secureTextEntry
-              value={passwordInput}
-              onChangeText={setPasswordInput}
-            />
+            {authMode !== 'forgot' ? (
+              <TextInput
+                style={styles.authInput}
+                placeholder="Password"
+                placeholderTextColor="#777"
+                secureTextEntry
+                value={passwordInput}
+                onChangeText={setPasswordInput}
+              />
+            ) : (
+              <TextInput
+                style={styles.authInput}
+                placeholder="Enter New Password"
+                placeholderTextColor="#777"
+                secureTextEntry
+                value={newPasswordInput}
+                onChangeText={setNewPasswordInput}
+              />
+            )}
 
-            <TouchableOpacity style={styles.authSubmitBtn} onPress={handleAuth}>
-              <Text style={styles.authSubmitBtnText}>{isSignUp ? 'Sign Up' : 'Login'}</Text>
-            </TouchableOpacity>
+            {authLoading ? (
+              <ActivityIndicator size="small" color="#E50914" style={{ marginVertical: 10 }} />
+            ) : (
+              <TouchableOpacity style={styles.authSubmitBtn} onPress={handleCloudAuth}>
+                <Text style={styles.authSubmitBtnText}>
+                  {authMode === 'signup' ? 'Sign Up' : authMode === 'forgot' ? 'Reset & Login' : 'Login'}
+                </Text>
+              </TouchableOpacity>
+            )}
 
-            <TouchableOpacity style={styles.authToggleBtn} onPress={() => setIsSignUp(!isSignUp)}>
+            {authMode === 'login' && (
+              <TouchableOpacity
+                style={{ marginTop: 10, alignItems: 'center' }}
+                onPress={() => {
+                  setAuthMode('forgot');
+                  setAuthStatusMessage('');
+                }}
+              >
+                <Text style={{ color: '#E50914', fontSize: 11, fontWeight: 'bold' }}>Forgot Password?</Text>
+              </TouchableOpacity>
+            )}
+
+            <TouchableOpacity
+              style={styles.authToggleBtn}
+              onPress={() => {
+                setAuthMode(authMode === 'login' ? 'signup' : 'login');
+                setAuthStatusMessage('');
+              }}
+            >
               <Text style={styles.authToggleText}>
-                {isSignUp ? 'Already have an account? Login' : "Don't have an account? Sign Up"}
+                {authMode === 'signup'
+                  ? 'Already have an account? Login'
+                  : authMode === 'forgot'
+                  ? 'Back to Login'
+                  : "Don't have an account? Sign Up"}
               </Text>
             </TouchableOpacity>
 
-            <TouchableOpacity style={styles.authCancelBtn} onPress={() => setAuthModalVisible(false)}>
+            <TouchableOpacity
+              style={styles.authCancelBtn}
+              onPress={() => {
+                setAuthModalVisible(false);
+                setEmailInput('');
+                setPasswordInput('');
+                setNewPasswordInput('');
+                setAuthMode('login');
+                setAuthStatusMessage('');
+              }}
+            >
               <Text style={styles.authCancelText}>Cancel</Text>
             </TouchableOpacity>
           </View>
@@ -573,7 +934,7 @@ const styles = StyleSheet.create({
   emptyText: { color: '#888', fontSize: 14, marginTop: 8 },
   modalContainer: { flex: 1, backgroundColor: '#121212' },
   backdropBox: { width: '100%', height: 200, position: 'relative' },
-  backdropImage: { width: '100%', height: '100%' },
+  backdropImage: { width: '100%', height: 100 },
   closeBtn: { position: 'absolute', top: 16, right: 16, backgroundColor: 'rgba(0,0,0,0.6)', borderRadius: 16, padding: 4 },
   modalBody: { padding: 14 },
   modalTitleRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
@@ -583,15 +944,42 @@ const styles = StyleSheet.create({
   trailerBtnText: { color: '#fff', fontWeight: 'bold', fontSize: 12 },
   sectionHeader: { color: '#fff', fontSize: 14, fontWeight: 'bold', marginTop: 10, marginBottom: 4 },
   overviewText: { color: '#bbb', fontSize: 12, lineHeight: 18 },
+  actorCardTouch: { width: 70, marginRight: 8, alignItems: 'center' },
+  actorImg: { width: 60, height: 80, borderRadius: 6, marginBottom: 2 },
+  actorName: { color: '#fff', fontSize: 9, fontWeight: '600', textAlign: 'center' },
+  actorChar: { color: '#777', fontSize: 8, textAlign: 'center' },
+  actorModalHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 16, paddingVertical: 12, borderBottomWidth: 1, borderColor: '#222' },
+  actorBackBtn: { padding: 4 },
+  actorHeaderTitle: { color: '#fff', fontSize: 16, fontWeight: 'bold', flex: 1, textAlign: 'center' },
+  actorProfileRow: { flexDirection: 'row', marginBottom: 14 },
+  actorProfileBigImg: { width: 90, height: 125, borderRadius: 8 },
+  actorNameBig: { color: '#fff', fontSize: 18, fontWeight: 'bold', marginBottom: 2 },
+  actorDept: { color: '#E50914', fontSize: 12, fontWeight: '600', marginBottom: 4 },
+  actorBirth: { color: '#888', fontSize: 11, marginBottom: 2 },
+  filmographyGrid: { flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'space-between' },
+  gridItem: { width: '31%', marginBottom: 14 },
+  gridPoster: { width: '100%', height: 140, borderRadius: 6, marginBottom: 4 },
+  gridTitle: { color: '#fff', fontSize: 11, fontWeight: '600' },
+  gridCharacter: { color: '#777', fontSize: 9 },
   authModalBg: { flex: 1, backgroundColor: 'rgba(0,0,0,0.85)', justifyContent: 'center', alignItems: 'center', padding: 20 },
   authBox: { width: '100%', backgroundColor: '#1a1a1a', borderRadius: 16, padding: 20, borderWidth: 1, borderColor: '#333' },
-  authTitle: { color: '#fff', fontSize: 20, fontWeight: 'bold', textAlign: 'center' },
-  authSubtitle: { color: '#888', fontSize: 12, textAlign: 'center', marginBottom: 20, marginTop: 4 },
+  authTitle: { color: '#fff', fontSize: 18, fontWeight: 'bold', textAlign: 'center' },
+  authSubtitle: { color: '#888', fontSize: 11, textAlign: 'center', marginBottom: 12, marginTop: 4 },
+  statusBox: { padding: 8, borderRadius: 6, marginBottom: 12 },
+  statusText: { color: '#fff', fontSize: 11, textAlign: 'center', fontWeight: '600' },
   authInput: { backgroundColor: '#262626', color: '#fff', borderRadius: 8, paddingHorizontal: 14, paddingVertical: 10, marginBottom: 12, fontSize: 13 },
-  authSubmitBtn: { backgroundColor: '#e50914', paddingVertical: 12, borderRadius: 8, alignItems: 'center', marginTop: 6 },
-  authSubmitBtnText: { color: '#fff', fontWeight: 'bold', fontSize: 14 },
+  authSubmitBtn: { backgroundColor: '#e50914', paddingVertical: 12, borderRadius: 8, alignItems: 'center', marginTop: 4 },
+  authSubmitBtnText: { color: '#fff', fontWeight: 'bold', fontSize: 13 },
   authToggleBtn: { marginTop: 14, alignItems: 'center' },
   authToggleText: { color: '#aaa', fontSize: 12 },
-  authCancelBtn: { marginTop: 10, alignItems: 'center' },
-  authCancelText: { color: '#666', fontSize: 12 }
+  authCancelBtn: { marginTop: 12, alignItems: 'center' },
+  authCancelText: { color: '#666', fontSize: 12 },
+  profileBox: { width: '100%', backgroundColor: '#1a1a1a', borderRadius: 16, padding: 20, borderWidth: 1, borderColor: '#333', alignItems: 'center' },
+  profileAvatar: { backgroundColor: '#E50914', width: 64, height: 64, borderRadius: 32, justifyContent: 'center', alignItems: 'center', marginBottom: 10 },
+  profileNameText: { color: '#fff', fontSize: 18, fontWeight: 'bold', textTransform: 'capitalize' },
+  profileEmailText: { color: '#888', fontSize: 12, marginTop: 2, marginBottom: 16 },
+  profileInfoCard: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#262626', width: '100%', padding: 12, borderRadius: 8, marginBottom: 16, justifyContent: 'center' },
+  profileInfoText: { color: '#bbb', fontSize: 13 },
+  logoutBtnModal: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', backgroundColor: '#E50914', width: '100%', paddingVertical: 12, borderRadius: 8 },
+  logoutBtnText: { color: '#fff', fontWeight: 'bold', fontSize: 13 }
 });
