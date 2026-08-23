@@ -16,6 +16,11 @@
         "foregroundImage": "https://i.postimg.cc/LXcdGxVw/cinema-concept-1284-12713.jpg",
         "backgroundColor": "#121212"
       }
+    },
+    "extra": {
+      "eas": {
+        "projectId": "2a51595b-62f2-47b6-b522-33a3012707bf"
+      }
     }
   }
 }
