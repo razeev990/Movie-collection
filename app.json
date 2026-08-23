@@ -2,23 +2,19 @@
   "expo": {
     "name": "Movie Collection",
     "slug": "movie-collection",
-    "owner": "razeev99091",
     "version": "1.0.0",
     "orientation": "portrait",
+    "icon": "https://i.postimg.cc/LXcdGxVw/cinema-concept-1284-12713.jpg",
+    "userInterfaceStyle": "dark",
     "splash": {
-      "backgroundColor": "#121212",
-      "resizeMode": "contain"
+      "resizeMode": "contain",
+      "backgroundColor": "#121212"
     },
     "android": {
-      "package": "com.razeev.moviecollection",
-      "permissions": ["INTERNET"],
-      "splash": {
+      "package": "com.moviecollection.app",
+      "adaptiveIcon": {
+        "foregroundImage": "https://i.postimg.cc/LXcdGxVw/cinema-concept-1284-12713.jpg",
         "backgroundColor": "#121212"
-      }
-    },
-    "extra": {
-      "eas": {
-        "projectId": "2a51595b-62f2-47b6-b522-33a3012707bf"
       }
     }
   }
