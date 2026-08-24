@@ -646,7 +646,7 @@ export default function App() {
           }}
         />
       )}
-            {/* Details Modal */}
+          {/* Details Modal */}
       <Modal visible={modalVisible} animationType="slide" transparent={false} onRequestClose={() => setModalVisible(false)}>
         <SafeAreaView style={styles.modalContainer}>
           <StatusBar barStyle="light-content" />
@@ -832,7 +832,7 @@ export default function App() {
           )}
         </SafeAreaView>
       </Modal>
-            {/* About Section Modal */}
+            {/* About Section Modal (With Developer Info, Live Privacy Policy & TMDB Disclaimer) */}
       <Modal visible={aboutModalVisible} animationType="fade" transparent onRequestClose={() => setAboutModalVisible(false)}>
         <View style={styles.authModalBg}>
           <View style={styles.aboutBox}>
@@ -853,6 +853,21 @@ export default function App() {
                 <Ionicons name="mail" size={16} color="#E50914" style={{ marginRight: 6 }} />
                 <Text style={styles.aboutEmailText}>razeevsah@gmail.com</Text>
               </TouchableOpacity>
+
+              <TouchableOpacity
+                style={[styles.aboutEmailRow, { marginTop: 8 }]}
+                onPress={() => Linking.openURL('https://www.privacypolicies.com/live/f000e221-8eb9-4055-926f-fa43ca6c38ca')}
+              >
+                <Ionicons name="shield-checkmark" size={16} color="#4CAF50" style={{ marginRight: 6 }} />
+                <Text style={[styles.aboutEmailText, { color: '#4CAF50' }]}>Privacy Policy</Text>
+              </TouchableOpacity>
+            </View>
+
+            {/* Official TMDB Attribution Disclaimer for Play Store Compliance */}
+            <View style={styles.tmdbAttributionBox}>
+              <Text style={styles.tmdbAttributionText}>
+                This product uses the TMDB API but is not endorsed or certified by TMDB.
+              </Text>
             </View>
 
             <TouchableOpacity style={styles.aboutCloseBtn} onPress={() => setAboutModalVisible(false)}>
@@ -1111,11 +1126,13 @@ const styles = StyleSheet.create({
   aboutIconContainer: { backgroundColor: '#E50914', padding: 14, borderRadius: 24, marginBottom: 12 },
   aboutAppTitle: { color: '#fff', fontSize: 20, fontWeight: 'bold' },
   aboutAppVersion: { color: '#777', fontSize: 12, marginTop: 2, marginBottom: 16 },
-  aboutCard: { backgroundColor: '#242424', width: '100%', padding: 16, borderRadius: 12, alignItems: 'center', marginBottom: 20 },
+  aboutCard: { backgroundColor: '#242424', width: '100%', padding: 16, borderRadius: 12, alignItems: 'center', marginBottom: 14 },
   aboutCreatedLabel: { color: '#888', fontSize: 12, marginBottom: 4 },
   aboutAuthorName: { color: '#fff', fontSize: 16, fontWeight: 'bold', marginBottom: 10 },
-  aboutEmailRow: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#1a1a1a', paddingHorizontal: 12, paddingVertical: 8, borderRadius: 8 },
+  aboutEmailRow: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#1a1a1a', paddingHorizontal: 12, paddingVertical: 8, borderRadius: 8, width: '100%', justifyContent: 'center' },
   aboutEmailText: { color: '#E50914', fontSize: 13, fontWeight: '600' },
+  tmdbAttributionBox: { backgroundColor: '#161616', padding: 10, borderRadius: 8, borderWidth: 1, borderColor: '#262626', marginBottom: 16, width: '100%' },
+  tmdbAttributionText: { color: '#888', fontSize: 10, textAlign: 'center', lineHeight: 14, fontStyle: 'italic' },
   aboutCloseBtn: { backgroundColor: '#333', paddingVertical: 10, paddingHorizontal: 30, borderRadius: 8 },
   aboutCloseBtnText: { color: '#fff', fontSize: 13, fontWeight: 'bold' }
 });
