@@ -12,6 +12,7 @@
     },
     "android": {
       "package": "com.moviecollection.app",
+      "versionCode": 1,
       "adaptiveIcon": {
         "foregroundImage": "./icon.png",
         "backgroundColor": "#121212"
